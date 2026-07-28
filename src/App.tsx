@@ -5,7 +5,7 @@ import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show }
 
 import { LETTERS, makeBlock, nextN, scoreBlock, type Block, type BlockScore, type Letter, type Response } from "./domain.js"
 import { AppRuntime } from "./runtime.js"
-import type { Storage } from "./services/storage.js"
+import { Storage } from "./services/storage.js"
 
 const colors = {
   background: "#1a1b26",
@@ -23,7 +23,7 @@ const colors = {
   gridActive: "#7aa2f7",
 }
 
-type Screen = "loading" | "home" | "tutorial" | "playing" | "summary" | "history" | "controls" | "error"
+type Screen = "loading" | "home" | "tutorial" | "playing" | "summary" | "history" | "controls" | "goal" | "error"
 type ControlName = keyof Storage.Controls
 
 interface PlayingState {
@@ -56,6 +56,15 @@ const mixColor = (from: string, to: string, amount: number): string => {
 const dPrime = (value: number): string => value.toFixed(2)
 const controlLabel = (value: string): string => value.length === 1 ? value.toUpperCase() : value
 const clampN = (value: number): number => Math.max(1, Math.min(10, value))
+const clampDailyGoal = (value: number): number => Math.max(1, Math.min(30, value))
+
+const blocksToday = (blocks: ReadonlyArray<Storage.BlockRecord>): number => {
+  const start = new Date()
+  start.setHours(0, 0, 0, 0)
+  const end = new Date(start)
+  end.setDate(end.getDate() + 1)
+  return blocks.filter((block) => block.timestamp >= start.getTime() && block.timestamp < end.getTime()).length
+}
 
 const formatDate = (timestamp: number): string => {
   const date = new Date(timestamp)
@@ -75,6 +84,7 @@ export function App() {
     version: 1,
     controls: { position: "a", sound: "s" },
     blocks: [],
+    dailyGoal: Storage.defaultDailyGoal,
   })
   const [n, setN] = createSignal(2)
   const [playing, setPlaying] = createSignal<PlayingState | null>(null)
@@ -83,6 +93,7 @@ export function App() {
   const [selectedControl, setSelectedControl] = createSignal<ControlName>("position")
   const [listeningFor, setListeningFor] = createSignal<ControlName | null>(null)
   const [sampleIndex, setSampleIndex] = createSignal(0)
+  const [goalDraft, setGoalDraft] = createSignal(Storage.defaultDailyGoal)
   let blockFiber: EffectFiber.Fiber<void, unknown> | null = null
 
   const blocks = createMemo(() => data().blocks)
@@ -219,6 +230,24 @@ export function App() {
     )
   }
 
+  const openGoal = () => {
+    setGoalDraft(data().dailyGoal)
+    setStatus("")
+    setScreen("goal")
+  }
+
+  const saveDailyGoal = () => {
+    const dailyGoal = goalDraft()
+    setData((current) => ({ ...current, dailyGoal }))
+    setStatus("")
+    setScreen("home")
+    AppRuntime.runtime.runFork(
+      AppRuntime.saveDailyGoal(dailyGoal).pipe(
+        Effect.catch((error) => Effect.sync(() => setStatus(`Daily goal could not be saved: ${String(error)}`))),
+      ),
+    )
+  }
+
   useKeyboard((key) => {
     if (key.eventType === "release" || key.repeated) return
     const name = actionKey(key)
@@ -255,6 +284,14 @@ export function App() {
       return
     }
 
+    if (activeScreen === "goal") {
+      if (name === "escape" || name === "g") setScreen("home")
+      else if (name === "up" || name === "right") setGoalDraft((value) => clampDailyGoal(value + 1))
+      else if (name === "down" || name === "left") setGoalDraft((value) => clampDailyGoal(value - 1))
+      else if (name === "return" || name === "enter") saveDailyGoal()
+      return
+    }
+
     if (activeScreen === "home") {
       if (name === "return" || name === "enter") startBlock()
       else if (name === "up") setN((value) => clampN(value + 1))
@@ -262,6 +299,7 @@ export function App() {
       else if (name === "t") setScreen("tutorial")
       else if (name === "h") setScreen("history")
       else if (name === "c") setScreen("controls")
+      else if (name === "g") openGoal()
       else if (name === "v") playSample()
       else if (name === "q") void renderer.destroy()
       return
@@ -313,6 +351,7 @@ export function App() {
           blocks={blocks()}
           lastBlock={lastBlock()}
           controls={data().controls}
+          dailyGoal={data().dailyGoal}
           status={status()}
         />
       </Show>
@@ -341,6 +380,10 @@ export function App() {
           status={status()}
         />
       </Show>
+
+      <Show when={screen() === "goal"}>
+        <Goal dailyGoal={goalDraft()} completed={blocksToday(blocks())} />
+      </Show>
     </box>
   )
 }
@@ -364,11 +407,26 @@ function MetaRow(props: { readonly label: string; readonly value: string }) {
   )
 }
 
+function DailyGoalProgress(props: { readonly completed: number; readonly goal: number }) {
+  const filled = () => Math.min(10, Math.round((props.completed / props.goal) * 10))
+  const complete = () => props.completed >= props.goal
+  return (
+    <text>
+      <span style={{ fg: colors.faint }}>{"today".padEnd(10)}</span>
+      <span style={{ fg: complete() ? colors.accent : colors.text }}>{`${props.completed}/${props.goal}`.padEnd(7)}</span>
+      <span style={{ fg: complete() ? colors.accent : colors.blue }}>{"■".repeat(filled())}</span>
+      <span style={{ fg: colors.panelBright }}>{"·".repeat(10 - filled())}</span>
+      <Show when={complete()}><span style={{ fg: colors.accent, bold: true }}>  DONE</span></Show>
+    </text>
+  )
+}
+
 function Home(props: {
   readonly n: number
   readonly blocks: ReadonlyArray<Storage.BlockRecord>
   readonly lastBlock: Storage.BlockRecord | undefined
   readonly controls: Storage.Controls
+  readonly dailyGoal: number
   readonly status: string
 }) {
   const average = () => props.blocks.length === 0
@@ -437,6 +495,7 @@ function Home(props: {
               label="keys"
               value={`${controlLabel(props.controls.position)} position · ${controlLabel(props.controls.sound)} sound`}
             />
+            <DailyGoalProgress completed={blocksToday(props.blocks)} goal={props.dailyGoal} />
           </box>
           <box marginTop={1} flexDirection="column" alignItems="center">
             <CommandBar
@@ -449,6 +508,7 @@ function Home(props: {
             <CommandBar
               commands={[
                 { key: "h", label: "history" },
+                { key: "g", label: "goal" },
                 { key: "c", label: "controls" },
                 { key: "q", label: "quit" },
               ]}
@@ -456,6 +516,35 @@ function Home(props: {
             <Show when={props.status.length > 0}>
               <text fg={colors.cyan}>{props.status}</text>
             </Show>
+          </box>
+        </box>
+      </box>
+    </>
+  )
+}
+
+function Goal(props: { readonly dailyGoal: number; readonly completed: number }) {
+  return (
+    <>
+      <Header right="daily goal" />
+      <box width="100%" flexGrow={1} minHeight={0} justifyContent="center" alignItems="center">
+        <box flexDirection="column" alignItems="center" gap={1}>
+          <text fg={colors.accent} attributes={TextAttributes.BOLD}>DAILY PRACTICE</text>
+          <ascii_font
+            text={`${props.dailyGoal}`}
+            font="block"
+            color={[colors.accent, colors.background]}
+            backgroundColor={colors.background}
+          />
+          <text fg={colors.muted}>blocks per day</text>
+          <box marginTop={1}><DailyGoalProgress completed={props.completed} goal={props.dailyGoal} /></box>
+          <text fg={colors.faint}>A focused session is usually 8–12 blocks.</text>
+          <box marginTop={1}>
+            <CommandBar commands={[
+              { key: "↑↓", label: "adjust" },
+              { key: "enter", label: "save" },
+              { key: "esc", label: "cancel" },
+            ]} />
           </box>
         </box>
       </box>

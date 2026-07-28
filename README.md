@@ -37,7 +37,8 @@ bun run start
 - Responses are one-way and correctness is shown only after the block.
 - Blocks raise `N` when both modalities reach 80% balanced accuracy and lower it when either falls below 65%. You can override the next level.
 - There is no pause or replay. Escape discards the current partial block.
-- Completed blocks are saved locally. There are no accounts, streaks, schedules, or telemetry.
+- Completed blocks are saved locally, and the home screen tracks today's progress against an adjustable daily goal.
+- There are no accounts, streaks, schedules, penalties, or telemetry.
 
 ## What the evidence says
 

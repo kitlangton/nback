@@ -24,6 +24,12 @@ export const saveControls = (controls: Storage.Controls) =>
     yield* storage.saveControls(controls)
   })
 
+export const saveDailyGoal = (dailyGoal: number) =>
+  Effect.gen(function* () {
+    const storage = yield* Storage.Service
+    yield* storage.saveDailyGoal(dailyGoal)
+  })
+
 export const playLetter = (letter: Parameters<NBackAudio.Interface["play"]>[0]) =>
   Effect.gen(function* () {
     const audio = yield* NBackAudio.Service

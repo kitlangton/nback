@@ -27,15 +27,25 @@ export const BlockRecord = Schema.Struct({
 })
 export interface BlockRecord extends Schema.Schema.Type<typeof BlockRecord> {}
 
-const AppData = Schema.Struct({
+const StoredAppData = Schema.Struct({
   version: Schema.Literal(1),
   controls: Controls,
   blocks: Schema.Array(BlockRecord),
   tutorialCompletedAt: Schema.optionalKey(Schema.Number),
+  dailyGoal: Schema.optionalKey(Schema.Number),
 })
-export interface AppData extends Schema.Schema.Type<typeof AppData> {}
+export interface AppData {
+  readonly version: 1
+  readonly controls: Controls
+  readonly blocks: ReadonlyArray<BlockRecord>
+  readonly tutorialCompletedAt?: number
+  readonly dailyGoal: number
+}
 
-const defaults: AppData = { version: 1, controls: { position: "a", sound: "s" }, blocks: [] }
+export const defaultDailyGoal = 10
+const defaults: AppData = { version: 1, controls: { position: "a", sound: "s" }, blocks: [], dailyGoal: defaultDailyGoal }
+const normalizeDailyGoal = (value: number | undefined): number =>
+  Math.max(1, Math.min(30, Math.round(value ?? defaultDailyGoal)))
 
 const normalizeBlock = (block: BlockRecord): BlockRecord => ({
   ...block,
@@ -51,6 +61,7 @@ export interface Interface {
   readonly load: () => Effect.Effect<AppData, StorageError>
   readonly addBlock: (block: BlockRecord) => Effect.Effect<void, StorageError>
   readonly saveControls: (controls: Controls) => Effect.Effect<void, StorageError>
+  readonly saveDailyGoal: (dailyGoal: number) => Effect.Effect<void, StorageError>
   readonly setTutorialCompleted: (timestamp: number) => Effect.Effect<void, StorageError>
 }
 
@@ -72,14 +83,18 @@ export const layer = (path: string) =>
             return new StorageError({ operation: "read", message: String(cause) })
           }),
         )
-        const data = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(AppData))(text).pipe(
+        const data = yield* Schema.decodeUnknownEffect(Schema.fromJsonString(StoredAppData))(text).pipe(
           Effect.mapError((cause) => new StorageError({ operation: "decode", message: String(cause) })),
         )
-        return { ...data, blocks: data.blocks.map(normalizeBlock) }
+        return {
+          ...data,
+          blocks: data.blocks.map(normalizeBlock),
+          dailyGoal: normalizeDailyGoal(data.dailyGoal),
+        }
       })
 
       const write = Effect.fn("Storage.write")(function* (data: AppData) {
-        const text = yield* Schema.encodeEffect(Schema.fromJsonString(AppData))(data).pipe(
+        const text = yield* Schema.encodeEffect(Schema.fromJsonString(StoredAppData))(data).pipe(
           Effect.mapError((cause) => new StorageError({ operation: "encode", message: String(cause) })),
         )
         const temporary = `${path}.tmp`
@@ -102,12 +117,16 @@ export const layer = (path: string) =>
         const data = yield* read()
         yield* write({ ...data, controls })
       })
+      const saveDailyGoal = Effect.fn("Storage.saveDailyGoal")(function* (dailyGoal: number) {
+        const data = yield* read()
+        yield* write({ ...data, dailyGoal: normalizeDailyGoal(dailyGoal) })
+      })
       const setTutorialCompleted = Effect.fn("Storage.setTutorialCompleted")(function* (timestamp: number) {
         const data = yield* read()
         yield* write({ ...data, tutorialCompletedAt: timestamp })
       })
 
-      return Service.of({ load, addBlock, saveControls, setTutorialCompleted })
+      return Service.of({ load, addBlock, saveControls, saveDailyGoal, setTutorialCompleted })
     }),
   )
 
