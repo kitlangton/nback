@@ -1177,6 +1177,8 @@ function Tutorial(props: { readonly controls: Storage.Controls; readonly onExit:
 
 function Summary(props: { readonly summary: SummaryState; readonly nextLevel: number; readonly status: string }) {
   const changed = () => props.nextLevel === props.summary.n ? "unchanged" : props.nextLevel > props.summary.n ? "up" : "down"
+  const levelColor = () => changed() === "up" ? colors.accent : changed() === "down" ? colors.coral : colors.blue
+  const changeLabel = () => changed() === "up" ? "LEVEL UP" : changed() === "down" ? "LEVEL DOWN" : "LEVEL HELD"
   const scoreColor = () => {
     const accuracy = props.summary.score.accuracy
     return accuracy >= 0.8 ? colors.accent : accuracy < 0.65 ? colors.coral : colors.blue
@@ -1197,13 +1199,23 @@ function Summary(props: { readonly summary: SummaryState; readonly nextLevel: nu
       <Header right={`block ${props.summary.blockNumber} · ${props.summary.n}-back`} />
       <box width="100%" flexGrow={1} minHeight={0} justifyContent="center" alignItems="center">
         <box flexDirection="column" alignItems="center" gap={1}>
+          <text fg={levelColor()} attributes={TextAttributes.BOLD}>{changeLabel()}</text>
           <ascii_font
-            text={percent(props.summary.score.accuracy)}
+            text={`${props.nextLevel}-BACK`}
             font="block"
-            color={[scoreColor(), colors.background]}
+            color={[levelColor(), colors.background]}
             backgroundColor={colors.background}
           />
-          <text fg={colors.muted}>next level {props.nextLevel}-back · {changed()}</text>
+          <text>
+            <Show when={changed() !== "unchanged"} fallback={
+              <span style={{ fg: levelColor(), bold: true }}>{props.nextLevel}-back held</span>
+            }>
+              <span style={{ fg: colors.faint }}>{props.summary.n}-back</span>
+              <span style={{ fg: levelColor(), bold: true }}>  →  {props.nextLevel}-back</span>
+            </Show>
+            <span style={{ fg: colors.faint }}>  ·  block accuracy </span>
+            <span style={{ fg: scoreColor(), bold: true }}>{percent(props.summary.score.accuracy)}</span>
+          </text>
           <box flexDirection="column" marginTop={1}>
             <text>
               <span style={{ fg: colors.faint }}>{"".padEnd(16)}</span>
