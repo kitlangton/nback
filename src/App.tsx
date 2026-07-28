@@ -42,7 +42,6 @@ interface SummaryState {
 }
 
 const percent = (value: number): string => `${Math.round(value * 100)}%`
-const accuracyColor = (value: number): string => value >= 0.8 ? colors.accent : value < 0.65 ? colors.coral : colors.blue
 
 const mixColor = (from: string, to: string, amount: number): string => {
   const start = parseInt(from.slice(1), 16)
@@ -399,87 +398,26 @@ function Header(props: { readonly right?: string }) {
   )
 }
 
-function Keycap(props: { readonly keyName: string; readonly label: string }) {
+function MetaRow(props: { readonly label: string; readonly value: string }) {
   return (
-    <box flexDirection="row">
-      <box width={3} height={1} justifyContent="center" backgroundColor={colors.panelBright}>
-        <text fg={colors.blue} attributes={TextAttributes.BOLD}>{controlLabel(props.keyName)}</text>
-      </box>
-      <text fg={colors.muted}> {props.label}</text>
-    </box>
+    <text>
+      <span style={{ fg: colors.faint }}>{props.label.padEnd(10)}</span>
+      <span style={{ fg: colors.text }}>{props.value}</span>
+    </text>
   )
 }
 
 function DailyGoalProgress(props: { readonly completed: number; readonly goal: number }) {
-  const segments = 54
-  const filled = () => Math.min(segments, Math.round((props.completed / props.goal) * segments))
+  const filled = () => Math.min(10, Math.round((props.completed / props.goal) * 10))
   const complete = () => props.completed >= props.goal
-  const remaining = () => Math.max(0, props.goal - props.completed)
   return (
-    <box width={54} flexDirection="column">
-      <box width="100%" flexDirection="row">
-        <text fg={colors.faint} attributes={TextAttributes.BOLD}>TODAY</text>
-        <box width={3} />
-        <text fg={complete() ? colors.accent : colors.text} attributes={TextAttributes.BOLD}>
-          {props.completed} / {props.goal} blocks
-        </text>
-        <box flexGrow={1} />
-        <text fg={complete() ? colors.accent : colors.faint}>
-          {complete() ? "complete" : `${remaining()} to go`}
-        </text>
-      </box>
-      <box width="100%" marginTop={1} flexDirection="row">
-        <text fg={complete() ? colors.accent : colors.blue}>{"━".repeat(filled())}</text>
-        <text fg={colors.panelBright}>{"━".repeat(segments - filled())}</text>
-      </box>
-    </box>
-  )
-}
-
-function HomeDetails(props: {
-  readonly blocks: ReadonlyArray<Storage.BlockRecord>
-  readonly lastBlock: Storage.BlockRecord | undefined
-  readonly controls: Storage.Controls
-  readonly dailyGoal: number
-  readonly average: number
-}) {
-  return (
-    <box width={58} paddingLeft={2} paddingRight={2} paddingTop={1} paddingBottom={1} flexDirection="column" backgroundColor={colors.panel}>
-      <DailyGoalProgress completed={blocksToday(props.blocks)} goal={props.dailyGoal} />
-      <box marginTop={1} flexDirection="column">
-        <Show
-          when={props.lastBlock}
-          fallback={
-            <box flexDirection="row">
-              <box width={9}><text fg={colors.faint}>LAST</text></box>
-              <text fg={colors.muted}>no completed blocks</text>
-            </box>
-          }
-        >
-          {(last) => (
-            <>
-              <box flexDirection="row">
-                <box width={9}><text fg={colors.faint}>LAST</text></box>
-                <text fg={colors.blue} attributes={TextAttributes.BOLD}>{`${last().n}-back`.padEnd(12)}</text>
-                <text fg={accuracyColor(last().accuracy)} attributes={TextAttributes.BOLD}>{percent(last().accuracy).padEnd(9)}</text>
-                <text fg={colors.muted}>d' <span style={{ fg: colors.text }}>{dPrime((last().position.dPrime + last().sound.dPrime) / 2)}</span></text>
-              </box>
-              <box flexDirection="row">
-                <box width={9}><text fg={colors.faint}>AVERAGE</text></box>
-                <text fg={colors.text} attributes={TextAttributes.BOLD}>{percent(props.average)}</text>
-                <text fg={colors.faint}> across {props.blocks.length} {props.blocks.length === 1 ? "block" : "blocks"}</text>
-              </box>
-            </>
-          )}
-        </Show>
-        <box marginTop={1} flexDirection="row">
-          <box width={9}><text fg={colors.faint}>KEYS</text></box>
-          <Keycap keyName={props.controls.position} label="position" />
-          <box width={3} />
-          <Keycap keyName={props.controls.sound} label="sound" />
-        </box>
-      </box>
-    </box>
+    <text>
+      <span style={{ fg: colors.faint }}>{"today".padEnd(10)}</span>
+      <span style={{ fg: complete() ? colors.accent : colors.text }}>{`${props.completed}/${props.goal}`.padEnd(7)}</span>
+      <span style={{ fg: complete() ? colors.accent : colors.blue }}>{"■".repeat(filled())}</span>
+      <span style={{ fg: colors.panelBright }}>{"·".repeat(10 - filled())}</span>
+      <Show when={complete()}><span style={{ fg: colors.accent, bold: true }}>  DONE</span></Show>
+    </text>
   )
 }
 
@@ -538,14 +476,26 @@ function Home(props: {
               backgroundColor={colors.background}
             />
           </box>
-          <box marginTop={1}>
-            <HomeDetails
-              blocks={props.blocks}
-              lastBlock={props.lastBlock}
-              controls={props.controls}
-              dailyGoal={props.dailyGoal}
-              average={average()}
+          <box flexDirection="column" marginTop={1}>
+            <Show
+              when={props.lastBlock}
+              fallback={<MetaRow label="last" value="no blocks yet" />}
+            >
+              {(last) => (
+                <>
+                  <MetaRow
+                    label="last"
+                    value={`${last().n}-back · ${percent(last().accuracy)} · d' ${dPrime((last().position.dPrime + last().sound.dPrime) / 2)}`}
+                  />
+                  <MetaRow label="average" value={percent(average())} />
+                </>
+              )}
+            </Show>
+            <MetaRow
+              label="keys"
+              value={`${controlLabel(props.controls.position)} position · ${controlLabel(props.controls.sound)} sound`}
             />
+            <DailyGoalProgress completed={blocksToday(props.blocks)} goal={props.dailyGoal} />
           </box>
           <box marginTop={1} flexDirection="column" alignItems="center">
             <CommandBar
