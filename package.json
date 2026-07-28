@@ -1,6 +1,6 @@
 {
   "name": "@kitlangton/nback",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "An adaptive dual n-back trainer for the terminal",
   "keywords": [
     "dual-n-back",
